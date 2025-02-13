@@ -1,60 +1,82 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const multer = require("multer");
-const fs = require("fs");
-const path = require("path");
-const File = require("../models/File");
+const Grid = require("gridfs-stream");
+const { Readable } = require("stream");
 
 const router = express.Router();
 
-// Define upload directory
-const uploadDir = path.join(__dirname, "../uploads");
-
-// Ensure uploads folder exists
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true }); // Create folder if it doesn't exist
-}
-
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadDir); // Save files in 'uploads/' folder
-    },
-    filename: (req, file, cb) => {
-        cb(null, Date.now() + "-" + file.originalname); // Ensure unique filenames
-    },
+// Setup GridFS
+const conn = mongoose.connection;
+let gfs;
+conn.once("open", () => {
+    gfs = Grid(conn.db, mongoose.mongo);
+    gfs.collection("uploads");
 });
 
+// Multer memory storage (stores file in memory before writing to MongoDB)
+const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Upload file route
+// Upload file to MongoDB (GridFS)
 router.post("/upload", upload.single("file"), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: "No file uploaded" });
         }
 
-        const newFile = new File({
-            filename: req.file.originalname,
-            filepath: req.file.path,
-            size: req.file.size,
+        const readableStream = new Readable();
+        readableStream.push(req.file.buffer);
+        readableStream.push(null);
+
+        const bucket = new mongoose.mongo.GridFSBucket(conn.db, { bucketName: "uploads" });
+
+        const uploadStream = bucket.openUploadStream(req.file.originalname);
+        readableStream.pipe(uploadStream);
+
+        uploadStream.on("finish", () => {
+            res.json({ message: "✅ File uploaded to MongoDB successfully", fileId: uploadStream.id });
         });
 
-        await newFile.save();
-        res.json({ message: "✅ File uploaded successfully", file: newFile });
     } catch (error) {
         console.error("❌ Error uploading file:", error);
         res.status(500).json({ error: "Failed to upload file" });
     }
 });
 
-// Get all files
+// Get all stored files
 router.get("/", async (req, res) => {
     try {
-        const files = await File.find();
-        res.json(files);
+        const bucket = new mongoose.mongo.GridFSBucket(conn.db, { bucketName: "uploads" });
+
+        bucket.find({}).toArray((err, files) => {
+            if (!files || files.length === 0) {
+                return res.status(404).json({ error: "No files found" });
+            }
+            res.json(files);
+        });
+
     } catch (error) {
-        console.error("❌ Error fetching files:", error);
-        res.status(500).json({ error: "Error fetching files" });
+        res.status(500).json({ error: "❌ Error fetching files" });
+    }
+});
+
+// Download a file
+router.get("/download/:id", async (req, res) => {
+    try {
+        const bucket = new mongoose.mongo.GridFSBucket(conn.db, { bucketName: "uploads" });
+
+        bucket.find({ _id: new mongoose.Types.ObjectId(req.params.id) }).toArray((err, files) => {
+            if (!files || files.length === 0) {
+                return res.status(404).json({ error: "File not found" });
+            }
+
+            const downloadStream = bucket.openDownloadStream(files[0]._id);
+            downloadStream.pipe(res);
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: "❌ Error downloading file" });
     }
 });
 
