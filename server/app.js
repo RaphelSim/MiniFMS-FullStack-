@@ -15,7 +15,7 @@ console.log("🔄 Attempting to connect to MongoDB...");
 
 // Connect to MongoDB
 mongoose
-  .connect("mongodb+srv://raphelsim:Raphel228108@cluster0.kb2mr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+  .connect(process.env.MONGODB_LINK)
   .then(() => console.log("✅ MongoDB Connected Successfully"))
   .catch((err) => console.error("❌ MongoDB connection error: ", err));
 
