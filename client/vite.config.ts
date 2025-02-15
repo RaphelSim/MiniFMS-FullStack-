@@ -17,4 +17,10 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  server: {
+    host: true, // Allow external access
+    strictPort: true,
+    port: 5173, // Ensure the port is correct
+    allowedHosts: ["6b56-155-69-184-18.ngrok-free.app"] // 👈 Add your Ngrok domain here
+  },
 })
