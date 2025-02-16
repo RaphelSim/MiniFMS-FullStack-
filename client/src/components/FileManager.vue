@@ -1,17 +1,17 @@
 <template>
     <div class="container">
-        <h1>📂 File Management System</h1>
-
         <!-- 📤 File Upload -->
         <div class="upload-section">
-            <input type="file" ref="fileInput" @change="handleFileUpload" />
+            <h3 class="pixel-text input-text clickable" @click="triggerFileInput">+ ADD FILES</h3>
         </div>
+        <input class="hidden-file-input" type="file" multiple ref="fileInput" @change="handleFileUpload"/>
 
         <!-- 📂 File List -->
-        <table class = "table">
+        <table class = "table pixel-text">
         <thead>
             <tr>
                 <th style="text-align: left; margin-left: 10px;">Filename</th>
+                <th>Size</th>
                 <th>Upload Date</th>
                 <th></th>
             </tr>
@@ -21,19 +21,25 @@
                 <!-- Filename column -->
                 <td width="60%" style="text-align: left; margin-left: 10px;">
                     <span @dblclick="startEditing(file)" v-if="!editingFileId || editingFileId !== file._id">{{ file.filename }}</span>
-                    <input v-if="editingFileId === file._id" v-model="newFilename" />
+                    <input class="pixel-text" v-if="editingFileId === file._id" v-model="newFilename" />
+                </td>
+                <td width="10%">
+                    {{ formatSize(file.size) }}
                 </td>
                 <td width="20%">
                     {{ formatDate(file.uploadDate) }}
                 </td>
                 <!-- Actions column -->
-                <td width="20%">
+                <td width="10%">
                     <!-- <button v-if="editingFileId !== file._id" @click="startEditing(file)">Rename</button> -->
-                    <button v-if="editingFileId === file._id" @click="renameFile(file._id)">Save</button>
-                    <button v-if="editingFileId === file._id" @click="cancelRename">Cancel</button>
-                    <font-awesome-icon :icon="['fas', 'download']" v-if="editingFileId !== file._id" @click="downloadFile(file._id, file.filename)" />
-                    <font-awesome-icon :icon="['fas', 'trash']" style="color: red; margin-left: 10px;" v-if="editingFileId != file._id" 
-                        @click="deleteFile(file._id)" @hover=""/>
+                    <p class="button-text pixel-text" v-if="editingFileId === file._id" @click="renameFile(file._id)"><u>Save</u></p>
+                    <p class="button-text pixel-text" v-if="editingFileId === file._id" @click="cancelRename"><u>Cancel</u></p>
+                    <img src="@/assets/pixel-download.png" class="clickable" width="25px" height="25px" v-if="editingFileId !== file._id" @click="downloadFile(file._id, file.filename)" />
+                    <img :src="getTrashIcon(file._id)" class="clickable" width="25px" height="25px" style="margin-left: 10px;" 
+                        v-if="editingFileId != file._id"
+                        @click="deleteFile(file._id)"
+                        @mouseover="openTrash(file._id)"
+                        @mouseleave="closeTrash()" />
                 </td>
             </tr>
             <!-- Show message if no files exist -->
@@ -50,6 +56,8 @@ import api from "@/service/api.js";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { library } from "@fortawesome/fontawesome-svg-core";
 import { faDownload, faTrash, faUpload } from "@fortawesome/free-solid-svg-icons";
+import trashIcon from "@/assets/pixel-trash.png";
+import openTrashIcon from "@/assets/pixel-trash-open.png";
 
 //  Add the icon to the library
 library.add([faDownload, faTrash, faUpload]);
@@ -62,27 +70,56 @@ export default {
             selectedFile: null,
             files: [],
             editingFileId: null,
-            newFilename: ""
+            newFilename: "",
+            hoveredFileId: null,
         };
     },
     methods: {
+        // trash can animated logic
+        getTrashIcon(fileId) {
+        return this.hoveredFileId === fileId ? openTrashIcon : trashIcon;
+        },
+        openTrash(fileId) {
+            this.hoveredFileId = fileId; // Set the hovered file
+        },
+        closeTrash() {
+            this.hoveredFileId = null; // Reset when the cursor leaves
+        },
+
+        // To tell parent to trigger the alert dialog
+        triggerAlert(message) {
+            this.$emit("show-alert", message);
+        },
+        triggerFileInput() {
+            this.$refs.fileInput.click(); // Simulates clicking the hidden input
+        },
+
         // Handle file selection
         handleFileUpload(event) {
-            this.selectedFile = event.target.files[0];
-            this.uploadFile();
+            this.selectedFiles = Array.from(event.target.files); // Store all selected files
+            this.uploadFiles(); // Call upload method
         },
-        async uploadFile() {
-            if (!this.selectedFile) return;
-            try {
-                await api.uploadFile(this.selectedFile);
-                alert("✅ File uploaded successfully!");
-                this.selectedFile = null;
-                this.getFiles();
-                this.$refs.fileInput.value = ""; 
-            } catch (error) {
-                console.error("❌ Upload failed:", error);
-            }
+        async uploadFiles() {
+            if (!this.selectedFiles.length) return this.triggerAlert("No files selected!");
+            for (const file of this.selectedFiles) {
+                try {
+                    await api.uploadFile(file);
+                    console.log(`✅ ${file.name} uploaded successfully`);
+                } catch (error) {
+                    this.triggerAlert(`UPLOAD FAILED: ${file.name} - ${error.message}`);
+                    console.error(`❌ Upload failed for ${file.name}:`, error);
+                    this.selectedFiles = []; // Clear queue if one fails
+                    this.$refs.fileInput.value = ""; // Reset file input
+                    return; // Stop further uploads
+                    }
+                }
+
+            this.triggerAlert("ALL FILES UPLOADED SUCCESSFULLY");
+            this.selectedFiles = []; // Clear queue after success
+            this.getFiles(); // Refresh file list
+            this.$refs.fileInput.value = ""; // Reset file input
         },
+
         async getFiles() {
             try {
                 const response = await api.getFiles();
@@ -102,9 +139,10 @@ export default {
             if (confirm("Are you sure you want to delete this file?")) {
                 try {
                     await api.deleteFile(id);
-                    alert("✅ File deleted!");
+                    this.triggerAlert("FILE DELETED SUCCESSFULLY");
                     this.getFiles();
                 } catch (error) {
+                    this.triggerAlert("ERROR DELETING FILE: " + error.message);
                     console.error("❌ Error deleting file:", error);
                 }
             }
@@ -119,15 +157,16 @@ export default {
         },
         async renameFile(id) {
             if (!this.newFilename.trim()) {
-                alert("❌ Filename cannot be empty!");
+                this.triggerAlert("FILE NAME CANNOT BE EMPTY");
                 return;
             }
             try {
                 await api.renameFile(id, this.newFilename);
-                alert("✅ File renamed successfully!");
+                this.triggerAlert("FILE RENAMED SUCCESSFULLY");
                 this.getFiles();
                 this.cancelRename();
             } catch (error) {
+                this.triggerAlert("ERROR RENAMING FILE: " + error.message);
                 console.error("❌ Error renaming file:", error);
             }
         },
@@ -142,8 +181,14 @@ export default {
             hour: "2-digit",
             minute: "2-digit",
             hour12: false, // Use 24-hour format
-        });
-    }
+            });
+        },
+        formatSize(size){
+            if(size < 1024) return size + " B";
+            if(size < 1024 * 1024) return (size / 1024).toFixed(2) + " KB";
+            if(size < 1024 * 1024 * 1024) return (size / 1024 / 1024).toFixed(2) + " MB";
+            return (size / 1024 / 1024 / 1024).toFixed(2) + " GB";
+        }
     },
     mounted() {
         this.getFiles();
@@ -153,13 +198,39 @@ export default {
 
 <style>
 .container {
-    max-width: 80%;
-    margin: auto;
+    max-width: 100%;
+    margin: 20px;
     text-align: center;
 }
 
 .upload-section {
     margin-bottom: 20px;
+}
+
+.pixel-text{
+    font-family: 'Pixelify Sans', sans-serif;
+    font-style: normal;
+}
+
+.input-text {
+    text-align: left;
+    font-size: 30px;
+    font-style: normal;
+    font-weight: normal;
+}
+
+.clickable {
+    cursor: pointer;
+}
+
+.hidden-file-input {
+    display: none;
+}
+
+.button-text {
+    margin-left: 10px;
+    cursor: pointer;
+    border: none;
 }
 
 table {
@@ -169,20 +240,15 @@ table {
 }
 
 td{
-    border-bottom: 1px solid #AAA;
+    border-bottom: 2px solid #AAA;
     border-collapse: collapse;
     height: 40px;
 }
 
 th{
-    border-bottom: 1px solid #000;
+    border-bottom: 3px solid #000;
     border-collapse: collapse;
     color: black;
-}
-
-button {
-    margin-left: 10px;
-    cursor: pointer;
-    border: none;
+    font-size: large;
 }
 </style>

@@ -1,6 +1,7 @@
 import axios from "axios";
 
-const API_URL = "http://localhost:8000/api/files"; // Change this if needed
+// using localhost
+const API_URL = "http://localhost:8000/api/files"; 
 
 export default {
     // 📤 Upload File

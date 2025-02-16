@@ -61,10 +61,6 @@ router.get("/all", async (req, res) => {
     try {
         const files = await File.find({}).sort({ filename: 1 });
 
-        if (!files || files.length === 0) {
-            return res.status(404).json({ error: "No files found" });
-        }
-
         res.json(files);
     } catch (error) {
         console.error("❌ Error fetching files:", error);

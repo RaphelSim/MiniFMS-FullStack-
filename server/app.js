@@ -7,7 +7,7 @@ const cors = require("cors");
 const fileRoutes = require("./routes/fileRoutes");
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: "*" })); // Allow all origins (for testing)
 app.use(express.json());
 app.use("/api/files", fileRoutes);
 
